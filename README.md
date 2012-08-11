@@ -1,3 +1,25 @@
+# How this was installed to heroku:
+
+```
+
+wget https://github.com/downloads/github/hubot/hubot-2.3.2.tar.gz
+tar -xvzf hubot-2.3.2.tar.gz
+mv hubot crunchy-ng
+cd crunch-ng
+git init .
+git commit -a 'wheves'
+heroku create --stack cedar
+git push heroku master
+heroku config:add HUBOT_IRC_SERVER="irc.freenode.net"
+heroku config:add HUBOT_IRC_ROOMS="#soggies"
+heroku config:add HUBOT_IRC_NICK="crunchy-ng"
+heroku config:add HEROKU_URL=http://aqueous-spire-3914.herokuapp.com
+heroku addons:add redistogo:nano
+
+```
+
+Don't worry - jamison is going to puppetize all this
+
 # Hubot
 
 This is a version of GitHub's Campfire bot, hubot. He's pretty cool.
