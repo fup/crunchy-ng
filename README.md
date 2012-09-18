@@ -10,13 +10,27 @@ git init .
 git commit -a 'wheves'
 heroku create --stack cedar
 git push heroku master
-heroku config:add HUBOT_IRC_SERVER="irc.freenode.net"
-heroku config:add HUBOT_IRC_ROOMS="#soggies"
-heroku config:add HUBOT_IRC_NICK="crunchy-ng"
-heroku config:add HEROKU_URL=http://aqueous-spire-3914.herokuapp.com
+heroku config:set HUBOT_IRC_SERVER="irc.freenode.net"
+heroku config:set HUBOT_IRC_ROOMS="#soggies"
+heroku config:set HUBOT_IRC_NICK="crunchy-ng"
+heroku config:set HEROKU_URL=http://aqueous-spire-3914.herokuapp.com
+heroku config:set HUBOT_IRC_UNFLOOD=true
 heroku addons:add redistogo:nano
 
 ```
+
+
+```
+ssh -L 8888:localhost:6667 freyr.websages.com
+export HUBOT_LOG_LEVEL=debug
+export HUBOT_IRC_ROOMS=#debug
+export HUBOT_IRC_PORT=8888
+export HUBOT_IRC_DEBUG=true
+export HUBOT_IRC_NICK=testing
+export HUBOT_IRC_SERVER=127.0.0.1
+
+bin/hubot -a irc
+``
 
 Don't worry - jamison is going to puppetize all this
 
