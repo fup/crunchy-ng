@@ -7,7 +7,6 @@
 #   None
 #
 # Commands:
-#   hubot bleach my eyes
 #   hubot eyebleach
 #
 # Notes:
