@@ -62,4 +62,4 @@ parse_team = (msg, team) ->
   pct  = team.children[3].children[0].data
   gb   = team.children[4].children[0].data
   l10  = team.children[11].children[0].data
-  msg.send "{0:-20} {1:3} {2:3} {3:4}  {4:5} {5:5}".teamFormat(name,wins,loss,pct,gb,l10)
+  msg.send "{0:-20} {1:3} {2:3}  {3:4} {4:5} {5:5}".teamFormat(name,wins,loss,pct,gb,l10)
