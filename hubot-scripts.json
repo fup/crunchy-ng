@@ -1,1 +1,1 @@
-["redis-brain.coffee", "tasks.coffee","weather.coffee","stock.coffee"]
+["redis-brain.coffee","tasks.coffee","weather.coffee","stock.coffee","insult.coffee"]
