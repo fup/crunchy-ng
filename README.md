@@ -22,11 +22,12 @@ heroku addons:add redistogo:nano
 
 ```
 ssh -L 8888:localhost:6667 freyr.websages.com
+ssh -L 8888:irc.us.freenode.net:6667 freyr.websages.com
 export HUBOT_LOG_LEVEL=debug
-export HUBOT_IRC_ROOMS=#debug
+export HUBOT_IRC_ROOMS=#soggies
 export HUBOT_IRC_PORT=8888
 export HUBOT_IRC_DEBUG=true
-export HUBOT_IRC_NICK=testing
+export HUBOT_IRC_NICK=crunchy-ng-dev
 export HUBOT_IRC_SERVER=127.0.0.1
 
 bin/hubot -a irc
