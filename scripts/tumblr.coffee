@@ -15,10 +15,6 @@
 # Author:
 #   azizshamim
 
-#Select     = require("soupselect").select
-#HtmlParser = require "htmlparser"
-#Browser    = require "zombie"
-
 api = require('scribe-node').DefaultApi10a
 scribe = require('scribe-node').load(['OAuth','TwitterApi'])
 
@@ -47,6 +43,14 @@ class scribe.TumblrApi extends api
   getAuthorizationUrl: (request_token) ->
     return @AUTHORIZE_URL + request_token.getToken()
 
+`function getOAuthVerifier(path) {
+  var vars = {};
+  var parts = path.replace(/[?&]+([^=&]+)=([^&]*)/gi, function(m,key,value) {
+    vars[key] = value;
+  });
+  return vars['oauth_verifier'];
+}`
+
 services = {}
 
 # tumblr doesn't actually honor the oob callback
@@ -56,22 +60,35 @@ handle_authorization = (robot, msg) ->
   callback = (url) ->
     message = if url then url else "Error on retrieving url. See logs for more details."
     msg.send message
+    if not robot.brain.data.oauth_user
+      robot.brain.data.oauth_user = {}
+    robot.brain.data.oauth_user['tumblr'] = msg.message.user.name
   new scribe.OAuth(robot.brain.data, msg.match[1].toLowerCase(), services).get_authorization_url(callback)
 
+# manual?
 handle_verification = (robot, msg) ->
-  api = msg.match[1].toLowerCase()
+  api = 'tumblr'
   callback = (response) ->
     if response
       if not robot.brain.data.oauth_user
-        robot.brain.data.oauth_user = []
-      # set up owner for authorization. affects only to removing it so far.
-      # but note that someone can still overwrite authorization if wanted!
-      robot.brain.data.oauth_user[api] = msg.message.user.reply_to
+        robot.brain.data.oauth_user = {}
+      robot.brain.data.oauth_user[api] = msg.message.user.name
       message = "Verification done"
-    else 
+    else
       message = "Error on verification process. See logs for more details."
     msg.send message
   new scribe.OAuth(robot.brain.data, api, services).set_verification_code(msg.match[2], callback)
+
+handle_callback_verification = (robot, verification) ->
+  api = 'tumblr'
+  callback = (response) ->
+    if response
+      if not robot.brain.data.oauth_user
+        robot.brain.data.oauth_user = {}
+      message = "Verification done"
+    else
+      message = "Error on verification process. See logs for more details."
+  new scribe.OAuth(robot.brain.data, api, services).set_verification_code(verification, callback)
 
 handle_refresh = (robot, msg) ->
   service = new scribe.OAuth(robot.brain.data, msg.match[1].toLowerCase(), services)
@@ -96,19 +113,20 @@ handle_refresh = (robot, msg) ->
 #      else
 #        return undefined
 
-tumblr_post = (robot, params) ->
-  callback = (response) ->
-    console.log response
-  oauth = new scribe.OAuth(robot.brain.data, 'tumblr' , services)
-  if access_token = oauth.get_access_token()
-    console.log access_token
-    service = oauth.create_service
-    console.log service
-    result = service.signedPostRequest access_token, callback, "https://api.tumblr.com/v2/blog/#{process.env.HUBOT_TUMBLR_LOG}/post", params
-    return result
+#tumblr_post = (robot, params) ->
+#  callback = (response) ->
+#    console.log response
+#  oauth = new scribe.OAuth(robot.brain.data, 'tumblr' , services)
+#  if access_token = oauth.get_access_token()
+#    console.log access_token
+#    service = oauth.create_service
+#    console.log service
+#    result = service.signedPostRequest access_token, callback, "https://api.tumblr.com/v2/blog/#{process.env.HUBOT_TUMBLR_LOG}/post", params
+#    return result
+#
+#tumblr_quote = (quote, source) ->
+#  return { 'type': 'quote', 'state': 'published', 'quote': quote, 'source': source }
 
-tumblr_quote = (quote, source) ->
-  return { 'type': 'quote', 'state': 'published', 'quote': quote, 'source': source }
 
 # small factory to support both gtalk and other adapters by hearing all lines or those called by bot name only
 hear_and_respond = (robot, regex, callback) ->
@@ -117,8 +135,18 @@ hear_and_respond = (robot, regex, callback) ->
 
 module.exports = (robot) ->
   robot.router.get "/oauth_callback", (req, res) ->
-    console.log req
-    res.end req
+    verifier = getOAuthVerifier(req['_parsedUrl']['query'])
+    handle_callback_verification robot, verifier
+    robot.brain.save()
+    res.end "You have been verified - go ask crunchy"
+
+  robot.hear /debug me/, (msg) ->
+    console.log robot.brain
+
+  robot.hear /save me/, (msg) ->
+    robot.brain.save
+    console.log "Saved data"
+    console.log robot.brain
 
   robot.hear /(?:http(?:s)?:.*)(.+)?/i, (msg) ->
     # post link to tumblr (booya)
@@ -132,36 +160,36 @@ module.exports = (robot) ->
   hear_and_respond robot, 'get ([0-9a-zA-Z].*) authorization url$', (msg) ->
     handle_authorization robot, msg
 
-  hear_and_respond robot, 'set ([0-9a-zA-Z].*) verifier (.*)', (msg) ->
-    handle_verification robot, msg
-
-  hear_and_respond robot, 'get ([0-9a-zA-Z].*) access token$', (msg) ->
-    if token = new scribe.OAuth(robot.brain.data, msg.match[1].toLowerCase(), services).get_access_token()
-      message = "Access token: " + token.getToken()
-    else
-      message = "Access token not found"
-    msg.send message
-
-  hear_and_respond robot, 'get ([0-9a-zA-Z].*) verifier$', (msg) ->
-    if token = new scribe.OAuth(robot.brain.data, msg.match[1].toLowerCase(), services).get_verifier()
-      message = "Verifier: " + token.getValue()
-    else
-      message = "Verifier not found"
-    msg.send message
-
-  hear_and_respond robot, 'remove ([0-9a-zA-Z].*) authorization$', (msg) ->
-    api = msg.match[1].toLowerCase()
-    if robot.brain.data.oauth_user and robot.brain.data.oauth_user[api] == msg.message.user.reply_to
-      message = "Authorization removed: " + new scribe.OAuth(robot.brain.data, api, services).remove_authorization()
-    else
-      message = "Authorization can be removed by original verifier only: " + robot.brain.data.oauth_user[api]
-    msg.send message
-
-  hear_and_respond robot, 'set ([0-9a-zA-Z].*) access token (.*)', (msg) ->
-    api = msg.match[1].toLowerCase()
-    if new scribe.OAuth(robot.brain.data, api, services).set_access_token_code(msg.match[2])
-      robot.brain.data.oauth_user[api] = msg.message.user.reply_to
-      message = "Access token set"
-    else
-      message = "Error on setting access token"
-    msg.send message
+#  hear_and_respond robot, 'set ([0-9a-zA-Z].*) verifier (.*)', (msg) ->
+#    handle_verification robot, msg
+#
+#  hear_and_respond robot, 'get ([0-9a-zA-Z].*) access token$', (msg) ->
+#    if token = new scribe.OAuth(robot.brain.data, msg.match[1].toLowerCase(), services).get_access_token()
+#      message = "Access token: " + token.getToken()
+#    else
+#      message = "Access token not found"
+#    msg.send message
+#
+#  hear_and_respond robot, 'get ([0-9a-zA-Z].*) verifier$', (msg) ->
+#    if token = new scribe.OAuth(robot.brain.data, msg.match[1].toLowerCase(), services).get_verifier()
+#      message = "Verifier: " + token.getValue()
+#    else
+#      message = "Verifier not found"
+#    msg.send message
+#
+#  hear_and_respond robot, 'remove ([0-9a-zA-Z].*) authorization$', (msg) ->
+#    api = msg.match[1].toLowerCase()
+#    if robot.brain.data.oauth_user and robot.brain.data.oauth_user[api] == msg.message.user.reply_to
+#      message = "Authorization removed: " + new scribe.OAuth(robot.brain.data, api, services).remove_authorization()
+#    else
+#      message = "Authorization can be removed by original verifier only: " + robot.brain.data.oauth_user[api]
+#    msg.send message
+#
+#  hear_and_respond robot, 'set ([0-9a-zA-Z].*) access token (.*)', (msg) ->
+#    api = msg.match[1].toLowerCase()
+#    if new scribe.OAuth(robot.brain.data, api, services).set_access_token_code(msg.match[2])
+#      robot.brain.data.oauth_user[api] = msg.message.user.reply_to
+#      message = "Access token set"
+#    else
+#      message = "Error on setting access token"
+#    msg.send message
