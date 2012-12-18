@@ -117,6 +117,7 @@ hear_and_respond = (robot, regex, callback) ->
 
 module.exports = (robot) ->
   robot.router.get "/oauth_callback", (req, res) ->
+    console.log req
     res.end req
 
   robot.hear /(?:http(?:s)?:.*)(.+)?/i, (msg) ->
