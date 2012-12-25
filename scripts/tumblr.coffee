@@ -142,11 +142,7 @@ module.exports = (robot) ->
 
   robot.hear /debug me/, (msg) ->
     console.log robot.brain
-
-  robot.hear /save me/, (msg) ->
-    robot.brain.save
-    console.log "Saved data"
-    console.log robot.brain
+    console.log services['tumblr']
 
   robot.hear /(?:http(?:s)?:.*)(.+)?/i, (msg) ->
     # post link to tumblr (booya)
