@@ -15,7 +15,7 @@
   },
 
   "dependencies": {
-    "hubot": "2.3.2",
+    "hubot": "2.4.1",
     "scribe-node": "https://github.com/azizshamim/scribe-node/tarball/master",
     "hubot-scripts": ">= 2.1.0",
     "optparse": "1.0.3",
