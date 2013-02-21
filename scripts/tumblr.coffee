@@ -124,6 +124,49 @@ handle_verification = (robot, msg) ->
 
 # tumblr
 class Tumblr
+  @encode: (item) ->
+    return encodeURIComponent(item)
+
+  @hmac: (signature, key) ->
+    return crypto.createHmac('sha1', key).update(signature).digest('base64')
+
+  @oauth_signature: (oauth_params, secret) ->
+    api_url="http://api.tumblr.com/v2/blog/soggies.tumblr.com/followers"
+    api_method="GET"
+
+    _signature_params = ("#{key}=#{oauth_params[key]}" for key in Object.keys(oauth_params).sort() )
+    _signature_params_join = _signature_params.join('&')
+    _signature_text = "#{api_method}&#{Tumblr.encode(api_url)}&#{Tumblr.encode(_signature_params_join)}"
+    _signature_key = "#{process.env.HUBOT_TUMBLR_CONSUMER_SECRET}&#{secret}"
+    console.log "OAuth params: #{oauth_params}"
+    console.log "Signature params: #{_signature_params}"
+    console.log "Signature joined: #{_signature_params_join}"
+    console.log "Signature text: #{_signature_text}"
+    console.log "Signature Key: #{_signature_key}"
+    return Tumblr.hmac(_signature_text, _signature_key)
+
+  @followers: (robot, params,callback) ->
+    api_url="http://api.tumblr.com/v2/blog/soggies.tumblr.com/followers"
+    oauth_params = {}
+
+    d = new Date
+    oauth_params['oauth_consumer_key'] = process.env.HUBOT_TUMBLR_CONSUMER_KEY
+    oauth_params['oauth_nonce'] = Math.floor(d.getTime()/1000)
+    oauth_params['oauth_signature_method'] = 'HMAC-SHA1'
+    oauth_params['oauth_timestamp'] = oauth_params['oauth_nonce']
+    # replace this with a smarter retrival (error handling y'know)
+    oauth_params['oauth_token']   = robot.brain.data.oauth.tumblr.access_token
+    oauth_params['oauth_version'] = '1.0'
+
+    oauth_headers = oauth_params
+    oauth_headers['oauth_signature'] = Tumblr.oauth_signature(oauth_params, robot.brain.data.oauth.tumblr.access_secret)
+
+    _header_base = ("#{key}=#{oauth_headers[key]}" for key in Object.keys(oauth_headers).sort() )
+    header_base = _header_base.join(',')
+    headers="OAuth #{header_base}"
+    console.log headers
+    request.get {url:api_url, headers: {'authorization':headers, 'content-type':'application/x-www-form-urlencoded'}, callback }
+
   @post: (robot, params, callback) ->
     # we need three specific objects (with reused information) in order to make a tumblr post
     # 1) we need a oauth header
@@ -136,13 +179,12 @@ class Tumblr
     oauth_params = {}
 
     d = new Date
-    oauth_params['oauth_customer_key'] = process.env.HUBOT_TUMBLR_CONSUMER_KEY
+    oauth_params['oauth_consumer_key'] = process.env.HUBOT_TUMBLR_CONSUMER_KEY
     oauth_params['oauth_nonce'] = Math.floor(d.getTime()/1000)
     oauth_params['oauth_signature_method'] = 'HMAC-SHA1'
-    oauth_params['oauth_timestamp'] = sig_params['oauth_nonce']
+    oauth_params['oauth_timestamp'] = oauth_params['oauth_nonce']
     # replace this with a smarter retrival (error handling y'know)
-    #oauth_params['oauth_token']   = robot.brain.data.oauth.tumblr.access_token
-    oauth_params['oauth_token']   = "Whatever"
+    oauth_params['oauth_token']   = robot.brain.data.oauth.tumblr.access_token
     oauth_params['oauth_version'] = '1.0'
 
     #signature_base="oauth_consumer_key=#{oauth_consumer_key}&oauth_nonce=#{oauth_nonce}&oauth_signature_method=#{oauth_signature_method}&oauth_timestamp=#{oauth_timestamp}&oauth_token=#{oauth_token}&oauth_version=#{oauth_version}"
@@ -156,8 +198,7 @@ class Tumblr
     signature_params="#{signature_base}&#{signature_content}"
     signature_text="#{api_method}&#{encodeURIComponent(api_url)}&#{encodeURIComponent(signature_params)}"
     # more safe retrieval
-    #signature_key="#{process.env.HUBOT_TUMBLR_CONSUMER_SECRET}&#{robot.brain.data.oauth.tumblr.access_secret}"
-    signature_key="#{process.env.HUBOT_TUMBLR_CONSUMER_SECRET}&#{"ABCED12334556"}"
+    signature_key="#{process.env.HUBOT_TUMBLR_CONSUMER_SECRET}&#{robot.brain.data.oauth.tumblr.access_secret}"
 
     oauth_params['oauth_signature'] = crypto.createHmac('sha1', signature_key).update(signature_text).digest('base64')
     console.log "Signature: #{oauth_params['oauth_signature']}"
@@ -166,18 +207,21 @@ class Tumblr
     header_base = _signature_base.join(',')
     console.log header_base
 
-    #body="$signature_params_content&$signature_params_base"
     body="#{signature_content}&#{signature_base}"
 
-    console.log body
   #  if callback
+    request.post {url:api_url, headers: { 'authorization': header_base}, form:body}, (e,r,body) ->
+      console.log e
+      console.log r
+      console.log b
+  #$(curl -X POST ${api_url} --data "$body" -H "authorization: $oauth_headers" -H "content-type: application/x-www-form-urlencoded" -qs)
   #    callback(message)
 
   @info: ->
     url = "https://api.tumblr.com/v2/blog/soggies.tumblr.com/info?api_key=#{process.env.HUBOT_TUMBLR_CONSUMER_KEY}"
     request.get {url: url}, (error, response, body) ->
-      console.log body
       console.log response
+      console.log body
 
 # tumblr post prep
   @link: (robot, msg) ->
@@ -208,8 +252,11 @@ module.exports = (robot) ->
     robot.brain.save()
     res.end "You have been verified - go ask crunchy"
 
-  #robot.hear /debug me/, (msg) ->
-  #  Tumblr.quote(robot, msg)
+  robot.hear /debug me/, (msg) ->
+    callback = (e,r,b) ->
+      console.log "and then..."
+      console.log b
+    Tumblr.followers(robot,msg,callback)
 
   robot.hear /(http(?:s)?:\S*)\s+(.+)?/i, (msg) ->
     Tumblr.link(robot, msg)
