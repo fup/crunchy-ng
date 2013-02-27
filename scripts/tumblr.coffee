@@ -11,6 +11,7 @@
 #   HUBOT_TUMBLR_CONSUMER_SECRET - consumer secret from Tumblr
 #   HUBOT_TUMBLR_LOG             - name of the blog on Tumblr
 #   HUBOT_TUMBLR_CALLBACK_URL    - name of callback url (or HUBOT_URL on heroku)
+#   HEROKU_URL                   - url of the heroku application
 #
 # Commands:
 #   tumblr authorization url - get the authorization url for tumblr, log into tumblr when asked and as long as there's a callback url...
@@ -124,13 +125,16 @@ handle_verification = (robot, msg) ->
 
 # tumblr
 class Tumblr
+  # TODO replace console.log with robot debugging
+  # TODO text, photo, quote, link, chat, audio, video
+  # DONE              quote, link
   @encode: (item) ->
     return encodeURIComponent(item)
 
   @hmac: (signature, key) ->
     return crypto.createHmac('sha1', key).update(signature).digest('base64')
 
-  @params: (params) ->
+  @param_string: (params) ->
     return ("#{key}=#{params[key]}" for key in Object.keys(params).sort() )
 
   @oauth_signature: (auth, data={}, secret, resource) ->
@@ -200,9 +204,7 @@ class Tumblr
     data_sorted = ("#{key}=#{Tumblr.encode(data[key])}" for key in Object.keys(data).sort() ).join('&')
     body="#{data_sorted}&#{params_no_sig}"
 
-    request.post {url:api_url, headers: {'authorization':headers, 'content-type':'application/x-www-form-urlencoded'}, body: body}, (e,r,b) ->
-      console.log e
-      console.log b
+    request.post {url:api_url, headers: {'authorization':headers, 'content-type':'application/x-www-form-urlencoded'}, body: body}, callback
 
   @info: ->
     url = "https://api.tumblr.com/v2/blog/soggies.tumblr.com/info?api_key=#{process.env.HUBOT_TUMBLR_CONSUMER_KEY}"
@@ -210,17 +212,22 @@ class Tumblr
       console.log response
       console.log body
 
+  @definition: (robot, data, callback) ->
+    data['type'] = 'text'
+    data['title'] = 'definition'
+    Tumblr.post robot, data, callback
+
 # tumblr post prep
-  @link: (robot, msg) ->
-    url = msg.match[1]
-    description = msg.match[2]
+  @link: (robot, data, callback ) ->
+    url = data.url
+    description = data.description
     headers = { 'User-Agent': 'TumblrBot for Hubot (+https://github.com/github/hubot-scripts)' }
     request.get {url: url, headers: headers }, (error, response, body) ->
       if ( !error and response.statusCode == 200 )
         $ = cheerio.load(body)
         title = $('title').text()
         console.log title
-        Tumblr.post(robot, { 'type': 'link', 'state': 'published', 'url': url, 'title': title, 'description': description })
+        Tumblr.post robot, { 'type': 'link', 'state': 'published', 'url': url, 'title': title, 'description': description }, callback
 
   @quote: (robot, quote, source) ->
     data =  { 'type': 'quote', 'quote': quote, 'source': source }
@@ -244,13 +251,21 @@ module.exports = (robot) ->
       console.log "and then..."
       console.log b
     #Tumblr.followers(robot, callback)
-    Tumblr.quote(robot, "Do or do not, there is no try", "Yoda")
+    #Tumblr.quote(robot, "Do or do not, there is no try", "Yoda")
+    #Tumblr.link(robot, data, callback)
+    data = { 'body': "Define: yermom is a whooah"}
+    Tumblr.definition(robot, data, callback)
 
   robot.hear /(http(?:s)?:\S*)\s+(.+)?/i, (msg) ->
     Tumblr.link(robot, msg)
 
-  robot.hear /['"](.*)+['"] -- (.*)$/i, (msg) ->
+  robot.hear /['"](.*)+['"] -- (.+)$/i, (msg) ->
     Tumblr.quote(robot, msg.match[1], msg.match[2])
+
+  robot.hear /$\s*defin(?:ition|e):?\s?(.+)$/i, (msg) ->
+    callback = (e,r,b) ->
+      console.log "and then..."
+      console.log b
 
     #  hear_and_respond robot, 'refresh me', (msg) ->
     #    handle_refresh robot, msg
