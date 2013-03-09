@@ -174,8 +174,13 @@ class Tumblr
     params['oauth_version'] = '1.0'
     return params
 
-  @followers: (robot, callback) ->
+  @followers: (robot, msg) ->
     params = {}
+    callback = (e,r,b) ->
+      body = JSON.parse(b)
+      message = "I see #{body.response.total_users} people:"
+      (message = "#{message} #{person.name}" for person in body.response.users)
+      msg.send message
     resource = "followers"
     api_url="http://api.tumblr.com/v2/blog/#{process.env.HUBOT_TUMBLR_LOG}/#{resource}"
 
@@ -204,7 +209,7 @@ class Tumblr
     data_sorted = ("#{key}=#{Tumblr.encode(data[key])}" for key in Object.keys(data).sort() ).join('&')
     body="#{data_sorted}&#{params_no_sig}"
 
-    request.post {url:api_url, headers: {'authorization':headers, 'content-type':'application/x-www-form-urlencoded'}, body: body}, callback
+    request.post {url:api_url, headers: {'authorization':headers, 'content-type':'application/x-www-form-urlencoded', 'User-Agent': 'TumblrBot for Hubot (+https://github.com/github/hubot-scripts)' }, body: body}, callback
 
   @info: ->
     url = "https://api.tumblr.com/v2/blog/soggies.tumblr.com/info?api_key=#{process.env.HUBOT_TUMBLR_CONSUMER_KEY}"
@@ -226,12 +231,13 @@ class Tumblr
       if ( !error and response.statusCode == 200 )
         $ = cheerio.load(body)
         title = $('title').text()
-        console.log title
-        Tumblr.post robot, { 'type': 'link', 'state': 'published', 'url': url, 'title': title, 'description': description }, callback
+        #console.log title
+        data = {type: 'link', state: 'published', url: url, title: title, description: description }
+        Tumblr.post robot, data, callback
 
-  @quote: (robot, quote, source) ->
-    data =  { 'type': 'quote', 'quote': quote, 'source': source }
-    Tumblr.post(robot, data)
+  @quote: (robot, data, callback) ->
+    data['type'] = 'quote'
+    Tumblr.post(robot, data, callback)
 
 # small factory to support both gtalk and other adapters by hearing all lines or those called by bot name only
 
@@ -246,26 +252,29 @@ module.exports = (robot) ->
     robot.brain.save()
     res.end "You have been verified - go ask crunchy"
 
+
   robot.hear /debug me/, (msg) ->
     callback = (e,r,b) ->
-      console.log "and then..."
-      console.log b
-    #Tumblr.followers(robot, callback)
-    #Tumblr.quote(robot, "Do or do not, there is no try", "Yoda")
+      body = JSON.parse(b)
+      msg.send "posted @ http://#{process.env.HUBOT_TUMBLR_LOG}/#{body.response.id}"
+    data = { quote: "Do or do not, there is no try", source: "Yoda" }
+    Tumblr.quote(robot, data, callback)
     #Tumblr.link(robot, data, callback)
-    data = { 'body': "Define: yermom is a whooah"}
+    #data = { 'body': "Define: yermom is a whooah"}
     Tumblr.definition(robot, data, callback)
+
+  robot.respond /who follows */, (msg) ->
+    Tumblr.followers(robot, msg)
 
   robot.hear /(http(?:s)?:\S*)\s+(.+)?/i, (msg) ->
     Tumblr.link(robot, msg)
 
   robot.hear /['"](.*)+['"] -- (.+)$/i, (msg) ->
+    data = { quote: msg.match[1], source: msg.match[2] }
     Tumblr.quote(robot, msg.match[1], msg.match[2])
 
   robot.hear /$\s*defin(?:ition|e):?\s?(.+)$/i, (msg) ->
-    callback = (e,r,b) ->
-      console.log "and then..."
-      console.log b
+    Tumblr.definition(robot, data)
 
     #  hear_and_respond robot, 'refresh me', (msg) ->
     #    handle_refresh robot, msg
