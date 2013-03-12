@@ -127,7 +127,7 @@ handle_verification = (robot, msg) ->
 class Tumblr
   # TODO replace console.log with robot debugging
   # TODO text, photo, quote, link, chat, audio, video
-  # DONE              quote, link
+  # DONE text, photo, quote, link,            , video
   @encode: (item) ->
     return encodeURIComponent(item)
 
@@ -137,6 +137,7 @@ class Tumblr
   @param_string: (params) ->
     return ("#{key}=#{params[key]}" for key in Object.keys(params).sort() )
 
+  # what a disaster of a function...
   @oauth_signature: (auth, data={}, secret, resource) ->
     auth_copy = {}
     ( auth_copy[key]=data[key] for key in Object.keys(data) )
@@ -151,17 +152,14 @@ class Tumblr
     _signature_params = ("#{key}=#{Tumblr.encode(auth_copy[key])}" for key in Object.keys(auth_copy).sort() )
     _signature_text = "#{api_method}&#{Tumblr.encode(api_url)}&#{Tumblr.encode(_signature_params.join('&'))}"
     _signature_key = "#{process.env.HUBOT_TUMBLR_CONSUMER_SECRET}&#{secret}"
-    #console.log "Signature joined: #{_signature_params}"
-    #console.log "Signature text: #{_signature_text}"
-    #console.log "Signature Key: #{_signature_key}"
     return Tumblr.hmac(_signature_text, _signature_key)
 
   @oauth_headers: (robot, auth, data={}, resource) ->
     auth['oauth_signature'] = Tumblr.oauth_signature(auth, data, robot.brain.data.oauth.tumblr.access_secret, resource)
     header_base = ("#{key}=#{auth[key]}" for key in Object.keys(auth).sort() )
-    #console.log header_base
     return "OAuth #{header_base.join(',')}"
 
+  # another disaster of a function
   @oauth_params: (robot) ->
     params = {}
     d = new Date
@@ -183,12 +181,13 @@ class Tumblr
       msg.send message
     resource = "followers"
     api_url="http://api.tumblr.com/v2/blog/#{process.env.HUBOT_TUMBLR_LOG}/#{resource}"
-
     params = Tumblr.oauth_params(robot)
     headers = Tumblr.oauth_headers(robot, params, {}, resource)
 
     request.get {url:api_url, headers: {'authorization':headers, 'content-type':'application/x-www-form-urlencoded'}, callback }
 
+  #disaster - fix
+  #http://www.tumblr.com/docs/en/api/v2#posting
   @post: (robot, data={}, callback) ->
     # we need three specific objects (with reused information) in order to make a tumblr post
     # 1) we need a oauth header (with the signature, but not the data)
@@ -202,7 +201,6 @@ class Tumblr
     params = Tumblr.oauth_params(robot,{})
     # create headers
     headers = Tumblr.oauth_headers(robot,params,data,resource)
-
     # create a body with oauth paramters and post data
     delete params['oauth_signature']
     params_no_sig = ("#{key}=#{Tumblr.encode(params[key])}" for key in Object.keys(params).sort() ).join('&')
@@ -217,26 +215,46 @@ class Tumblr
       console.log response
       console.log body
 
-  @definition: (robot, data, callback) ->
-    data['type'] = 'text'
-    data['title'] = 'definition'
+  @definition: (robot, msg, callback) ->
+    data = {}
+    data.body = msg.match[0]
+    data.type  = 'text'
+    data.title = 'definition'
     Tumblr.post robot, data, callback
 
-# tumblr post prep
-  @link: (robot, data, callback ) ->
-    url = data.url
-    description = data.description
+  @link: (robot, msg, callback) ->
     headers = { 'User-Agent': 'TumblrBot for Hubot (+https://github.com/github/hubot-scripts)' }
-    request.get {url: url, headers: headers }, (error, response, body) ->
+    url = msg.match[1]
+    description = msg.match[2]
+    callback = (e,r,b) ->
+      body = JSON.parse(b)
+      msg.send "posted @ http://#{process.env.HUBOT_TUMBLR_LOG}/#{body.response.id}"
+    request.get { url: url, headers: headers} , (error, response, body) ->
       if ( !error and response.statusCode == 200 )
         $ = cheerio.load(body)
-        title = $('title').text()
-        #console.log title
-        data = {type: 'link', state: 'published', url: url, title: title, description: description }
+        content_type = response.headers['content-type'].split('/',2)
+        data = {}
+        data.state = 'published'
+        console.log content_type
+        switch content_type[0]
+          when "image"
+            data.type = 'photo'
+            data.link = url
+            data.source = url
+            data.caption = description || ''
+          when "video"
+            data.type = 'video'
+            data.caption = description || ''
+            data.embed = Tumblr.embed(url)
+          else
+            data.type = 'link'
+            data.url = url
+            data.title = $('title').text()
+            data.description = description || ''
         Tumblr.post robot, data, callback
 
   @quote: (robot, data, callback) ->
-    data['type'] = 'quote'
+    data = { type: 'quote', quote: msg.match[1], source: msg.match[2] }
     Tumblr.post(robot, data, callback)
 
 # small factory to support both gtalk and other adapters by hearing all lines or those called by bot name only
@@ -252,29 +270,29 @@ module.exports = (robot) ->
     robot.brain.save()
     res.end "You have been verified - go ask crunchy"
 
-
-  robot.hear /debug me/, (msg) ->
-    callback = (e,r,b) ->
-      body = JSON.parse(b)
-      msg.send "posted @ http://#{process.env.HUBOT_TUMBLR_LOG}/#{body.response.id}"
-    data = { quote: "Do or do not, there is no try", source: "Yoda" }
-    Tumblr.quote(robot, data, callback)
-    #Tumblr.link(robot, data, callback)
-    #data = { 'body': "Define: yermom is a whooah"}
-    Tumblr.definition(robot, data, callback)
+  # for debugging. turned off
+  #robot.hear /debug me/, (msg) ->
+  #  callback = (e,r,b) ->
+  #    body = JSON.parse(b)
+  #    msg.send "posted @ http://#{process.env.HUBOT_TUMBLR_LOG}/#{body.response.id}"
+  #  #data = { quote: "Do or do not, there is no try", source: "Yoda" }
+  #  #Tumblr.quote(robot, data, callback)
+  #  #Tumblr.link(robot, data, callback)
+  #  #data = { 'body': "Define: yermom is a whooah"}
+  #  #Tumblr.definition(robot, data, callback)
+  #  #Tumblr.link(robot, msg)
 
   robot.respond /who follows */, (msg) ->
     Tumblr.followers(robot, msg)
 
-  robot.hear /(http(?:s)?:\S*)\s+(.+)?/i, (msg) ->
+  robot.hear /(http(?:s)?:\S*)\s*(.+)?/i, (msg) ->
     Tumblr.link(robot, msg)
 
   robot.hear /['"](.*)+['"] -- (.+)$/i, (msg) ->
-    data = { quote: msg.match[1], source: msg.match[2] }
-    Tumblr.quote(robot, msg.match[1], msg.match[2])
+    Tumblr.quote(robot, msg)
 
-  robot.hear /$\s*defin(?:ition|e):?\s?(.+)$/i, (msg) ->
-    Tumblr.definition(robot, data)
+  robot.hear /\s*defin(?:ition|e):?\s?(.+)$/i, (msg) ->
+    Tumblr.definition(robot, msg)
 
     #  hear_and_respond robot, 'refresh me', (msg) ->
     #    handle_refresh robot, msg
